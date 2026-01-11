@@ -18,6 +18,15 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRoutes);
 
+app.get('/api/debug/ai', (req, res) => {
+    res.json({
+        hasKey: !!process.env.GEMINI_API_KEY,
+        keyPrefix: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.substring(0, 10) : "missing",
+        hasSecondaryKey: !!process.env.SECONDARY_GEMINI_KEY,
+        nodeVersion: process.version
+    });
+});
+
 const server = http.createServer(app);
 
 const io = new Server(server, {
@@ -337,21 +346,19 @@ app.post('/api/generate-suggestions', async (req, res) => {
             res.status(500).json({ error: "Failed to parse AI response", raw: text });
         }
     } catch (error) {
-        console.error("🛑 GEMINI API ERROR:", error.message);
+        console.error("🛑 GEMINI API ERROR:", error);
 
         let errorMsg = "AI Pilot Unavailable";
-
         if (error.message.includes('503') || error.message.includes('overloaded')) {
-            errorMsg = "AI Server Overloaded - Try Again";
+            errorMsg = "AI Server Overloaded";
         } else if (error.message.includes('429')) {
-            errorMsg = "AI Traffic High - Standby";
+            errorMsg = "AI Traffic High";
+        } else {
+            // Append first 30 chars of error message for debugging
+            errorMsg += " (" + error.message.substring(0, 30) + ")";
         }
 
-        // Fallback Mechanism
-        // Return a structured error response that the frontend can display gracefully
-        const fallbackSuggestions = [
-            "(System: " + errorMsg + ")"
-        ];
+        const fallbackSuggestions = ["(System: " + errorMsg + ")"];
 
         if (autoMode) {
             res.json({ reply: `[SYSTEM ALERT: ${errorMsg}]`, confidence_score: 0 });
