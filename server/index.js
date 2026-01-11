@@ -88,15 +88,30 @@ io.on('connection', (socket) => {
                 // Simulate thinking delay
                 setTimeout(async () => {
                     try {
-                        const botModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-                        const result = await botModel.generateContent(`
-                            You are "Pilot Bot", a helpful AI assistant in the ChatPilot app.
-                            User just said: "${data.content}"
-                            
-                            Reply normally as a helpful assistant. Keep it concise (under 2 sentences).
-                        `);
-                        const response = await result.response;
-                        const botReplyText = response.text().trim();
+                        const keys = [process.env.GEMINI_API_KEY, process.env.SECONDARY_GEMINI_KEY].filter(Boolean);
+                        let botReplyText = "";
+                        let success = false;
+
+                        for (const key of keys) {
+                            if (success) break;
+                            try {
+                                const tempGenAI = new GoogleGenerativeAI(key);
+                                const botModel = tempGenAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                                const result = await botModel.generateContent(`
+                                    You are "Pilot Bot", a helpful AI assistant in the ChatPilot app.
+                                    User just said: "${data.content}"
+                                    
+                                    Reply normally as a helpful assistant. Keep it concise (under 2 sentences).
+                                `);
+                                const response = await result.response;
+                                botReplyText = response.text().trim();
+                                success = true;
+                            } catch (err) {
+                                console.warn(`🤖 Bot Key fallback trigger: ${err.message}`);
+                            }
+                        }
+
+                        if (!success) throw new Error("Bot AI failed");
 
                         const botMsgData = {
                             room: data.room,
@@ -106,6 +121,7 @@ io.on('connection', (socket) => {
                             timestamp: new Date(),
                             isAiGenerated: true
                         };
+
 
                         // Save Bot Message
                         const botMessage = new Message(botMsgData);
@@ -233,22 +249,36 @@ app.post('/api/generate-suggestions', async (req, res) => {
         console.log("🤖 Requesting Gemini 1.5 Flash for prompt...");
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // Use stable model version
 
-        console.log("🤖 Requesting Gemini 1.5 Flash for prompt...");
+        const keys = [process.env.GEMINI_API_KEY, process.env.SECONDARY_GEMINI_KEY].filter(Boolean);
         let text = "";
-        
-        // Simple Retry Logic for transient errors (like 429)
-        for (let attempt = 1; attempt <= 2; attempt++) {
-            try {
-                const result = await model.generateContent(prompt);
-                const response = await result.response;
-                text = response.text().trim();
-                break; // Success
-            } catch (err) {
-                console.warn(`⚠️ Attempt ${attempt} failed: ${err.message}`);
-                if (attempt === 2) throw err; // Throw on final failure
-                await new Promise(r => setTimeout(r, 2000)); // Wait 2s before retry
+        let success = false;
+
+        for (const key of keys) {
+            if (success) break;
+            const tempGenAI = new GoogleGenerativeAI(key);
+            const tempModel = tempGenAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+            for (let attempt = 1; attempt <= 2; attempt++) {
+                try {
+                    const result = await tempModel.generateContent(prompt);
+                    const response = await result.response;
+                    text = response.text().trim();
+                    success = true;
+                    break;
+                } catch (err) {
+                    console.warn(`⚠️ Key ${key.substring(0, 10)}... Attempt ${attempt} failed: ${err.message}`);
+                    if (err.message.includes('429') || err.message.includes('API_KEY_INVALID')) {
+                        // Rate limit or invalid key -> Move to next key immediately
+                        break; 
+                    }
+                    if (attempt === 2) break; 
+                    await new Promise(r => setTimeout(r, 2000));
+                }
             }
         }
+        
+        if (!success) throw new Error("All AI keys exhausted or failed.");
+
         
         console.log("📡 Raw AI Output:", text);
 
