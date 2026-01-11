@@ -34,8 +34,9 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
 // Socket.io Logic
+// Socket.io Logic
 io.on('connection', (socket) => {
-// ...
+    // ...
     console.log('User Connected:', socket.id);
 
     socket.on('register_user', (userId) => {
@@ -49,7 +50,6 @@ io.on('connection', (socket) => {
     });
 
     socket.on('send_message', async (data) => {
-        // data: { room, senderId, receiverId, content, timestamp, isAiGenerated }
         try {
             // 1. Save Message
             const newMessage = new Message(data);
@@ -61,7 +61,6 @@ io.on('connection', (socket) => {
             });
 
             if (!conv) {
-                // New conversation -> Pending if not self-msg (unlikely)
                 conv = await Conversation.create({
                     participants: [data.senderId, data.receiverId],
                     status: 'pending',
@@ -69,8 +68,6 @@ io.on('connection', (socket) => {
                     lastMessage: data
                 });
             } else {
-                // Verify block status? (Assuming UI handles most, but good to check)
-                // Update last message
                 conv.lastMessage = data;
                 conv.updatedAt = new Date();
                 await conv.save();
@@ -78,21 +75,65 @@ io.on('connection', (socket) => {
 
             const messageToEmit = { ...newMessage._doc, room: data.room };
 
-            // Broadcast to specific room
+            // Broadcast
             socket.to(data.room).emit('receive_message', messageToEmit);
-
-            // Also notify receiver personally (for sidebar updates)
             socket.to(data.receiverId).emit('receive_message', messageToEmit);
 
-            // Emit event to update conversation list (if we had one)
-            // socket.emit('update_conversation', conv);
+            // --- BOT LOGIC ---
+            // If the receiver is the Pilot Bot, reply automatically
+            const receiverUser = await User.findById(data.receiverId);
+            if (receiverUser && receiverUser.email === 'bot@chatpilot.ai') {
+                console.log("🤖 Message received by Pilot Bot. Generating reply...");
+                
+                // Simulate thinking delay
+                setTimeout(async () => {
+                    try {
+                        const botModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                        const result = await botModel.generateContent(`
+                            You are "Pilot Bot", a helpful AI assistant in the ChatPilot app.
+                            User just said: "${data.content}"
+                            
+                            Reply normally as a helpful assistant. Keep it concise (under 2 sentences).
+                        `);
+                        const response = await result.response;
+                        const botReplyText = response.text().trim();
+
+                        const botMsgData = {
+                            room: data.room,
+                            senderId: data.receiverId, // Bot sends
+                            receiverId: data.senderId, // User receives
+                            content: botReplyText,
+                            timestamp: new Date(),
+                            isAiGenerated: true
+                        };
+
+                        // Save Bot Message
+                        const botMessage = new Message(botMsgData);
+                        await botMessage.save();
+
+                        // Update Conversation
+                        conv.lastMessage = botMsgData;
+                        conv.updatedAt = new Date();
+                        await conv.save();
+
+                        // Emit Bot Reply
+                        const botEmit = { ...botMessage._doc, room: data.room };
+                        io.to(data.room).emit('receive_message', botEmit);
+                        io.to(data.senderId).emit('receive_message', botEmit); // Notify user
+
+                    } catch (botErr) {
+                        console.error("Bot Reply Error:", botErr);
+                    }
+                }, 1500);
+            }
+            // ----------------
+
         } catch (err) {
             console.error('Error saving message:', err);
         }
     });
 
     socket.on('accept_request', (data) => {
-        // Notify the initiator
         socket.to(data.receiverId).emit('request_accepted', data);
     });
 
@@ -100,6 +141,56 @@ io.on('connection', (socket) => {
         console.log('User Disconnected', socket.id);
     });
 });
+
+// Demo Auth Endpoint
+app.post('/api/auth/demo', async (req, res) => {
+    try {
+        // 1. Ensure Bot Exists
+        let botUser = await User.findOne({ email: 'bot@chatpilot.ai' });
+        if (!botUser) {
+            // Create Bot if doesn't exist
+            botUser = new User({
+                username: 'Pilot Bot',
+                email: 'bot@chatpilot.ai',
+                phoneNumber: '0000000000',
+                password: 'bot_password_secure', // Not used really
+            });
+            await botUser.save();
+        }
+
+        // 2. Create Guest User
+        const randomId = Math.floor(Math.random() * 10000);
+        const guestUser = new User({
+            username: `Guest Pilot ${randomId}`,
+            email: `guest${randomId}@demo.com`,
+            phoneNumber: `99${randomId.toString().padStart(8, '0')}`,
+            password: 'demo_password' 
+        });
+        await guestUser.save();
+
+        // 3. Create Conversation between Guest and Bot
+        const conv = await Conversation.create({
+            participants: [guestUser._id, botUser._id],
+            status: 'accepted',
+            initiatedBy: botUser._id,
+            lastMessage: {
+                content: "Welcome to ChatPilot! I'm your AI assistant. How can I help you?",
+                senderId: botUser._id,
+                timestamp: new Date()
+            }
+        });
+        
+        // Return Guest User Data (Simulate Login)
+        // Note: Ideally we return a JWT, but for now filtering password is enough if using same structure
+        const { password, ...userData } = guestUser._doc;
+        res.json(userData);
+
+    } catch (err) {
+        console.error("Demo Login Error:", err);
+        res.status(500).json({ error: "Failed to create demo session" });
+    }
+});
+
 
 // AI Suggestions Endpoint
 app.post('/api/generate-suggestions', async (req, res) => {

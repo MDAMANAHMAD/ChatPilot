@@ -189,7 +189,7 @@ const ChatArea = ({ messages, currentContact, onSendMessage, messageInput, setMe
                                 {/* Message Bubble */}
                                 <div className={`relative px-4 py-3 rounded-2xl shadow-lg text-[14.5px] leading-relaxed group ${isMe
                                         ? 'bg-gradient-to-br from-pilot-primary to-pilot-accent text-white rounded-br-none'
-                                        : 'bg-pilot-surface text-pilot-text-main rounded-bl-none border border-white/5'
+                                        : 'bg-slate-700 text-white rounded-bl-none border border-white/10'
                                     }`}>
                                     <div className="break-words min-w-[60px]">
                                         {msg.content}

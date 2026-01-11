@@ -127,23 +127,48 @@ const Login = () => {
               </div>
             </div>
 
+          <div className="flex gap-4 mt-8">
             <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-pilot-primary text-white py-4 rounded-xl hover:bg-pilot-primary-hover transition-all font-bold text-base shadow-[0_0_20px_rgba(99,102,241,0.3)] transform active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-3 mt-8"
-            >
-              {isLoading ? (
-                  <>
+                type="submit"
+                disabled={isLoading}
+                className="flex-1 bg-pilot-primary text-white py-4 rounded-xl hover:bg-pilot-primary-hover transition-all font-bold text-base shadow-[0_0_20px_rgba(99,102,241,0.3)] transform active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    Establishing Link...
-                  </>
-              ) : (
-                  <>
-                    <LogIn size={20} />
-                    INITIALIZE LOGIN
-                  </>
-              )}
+                ) : (
+                    <>
+                      <LogIn size={20} />
+                      LOGIN
+                    </>
+                )}
             </button>
+            <button
+                type="button"
+                onClick={async () => {
+                    setIsLoading(true);
+                    try {
+                        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/auth/demo`, { method: 'POST' });
+                        const data = await res.json();
+                        if (res.ok) {
+                             localStorage.setItem('userInfo', JSON.stringify(data));
+                             // Force reload/redirect to ensure Context picks it up? 
+                             // Better to use a Context method, but direct localStorage + window.location is robust for "Demo"
+                             window.location.href = '/chat';
+                        } else {
+                            setError("Demo Unavailable");
+                        }
+                    } catch (err) {
+                        setError("Connection Error");
+                    } finally {
+                        setIsLoading(false);
+                    }
+                }}
+                className="flex-1 bg-pilot-surface border border-pilot-primary/50 text-pilot-primary hover:bg-pilot-primary/10 py-4 rounded-xl transition-all font-bold text-base transform active:scale-[0.98] flex items-center justify-center gap-2"
+              >
+                <Zap size={20} />
+                TRY DEMO
+            </button>
+          </div>
           </form>
 
           <p className="mt-10 text-center text-pilot-secondary text-sm">
