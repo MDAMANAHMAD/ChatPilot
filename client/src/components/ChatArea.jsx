@@ -29,7 +29,7 @@ const ChatArea = ({ messages, currentContact, onSendMessage, messageInput, setMe
         setIsGenerating(true);
         setComposerError("");
         try {
-            const res = await fetch('http://localhost:3001/api/generate-draft', {
+            const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/generate-draft`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ prompt, chatHistory: messages })
@@ -90,7 +90,7 @@ const ChatArea = ({ messages, currentContact, onSendMessage, messageInput, setMe
     const handleAccept = async () => {
         if (!conversation?._id) return;
         try {
-            const res = await fetch('http://localhost:3001/api/conversation/update', {
+            const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/conversation/update`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ conversationId: conversation._id, status: 'accepted' })

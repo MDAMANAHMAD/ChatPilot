@@ -47,12 +47,12 @@ const MainApp = () => {
     useEffect(() => {
         if (!user) return;
 
-        socket = io('http://localhost:3001');
+        socket = io(import.meta.env.VITE_API_URL || 'http://localhost:3001');
         socket.emit('register_user', user._id);
 
         const fetchConversations = async () => {
             try {
-                const res = await fetch(`http://localhost:3001/api/conversations/${user._id}`);
+                const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/conversations/${user._id}`);
                 const data = await res.json();
                 setContacts(data);
             } catch (error) {
@@ -60,150 +60,19 @@ const MainApp = () => {
             }
         };
         fetchConversations();
-
-        socket.on('receive_message', (data) => {
-            const currentContactNow = contactRef.current;
-            const roomId = getRoomId(data.senderId, data.receiverId);
-            const currentRoomId = currentContactNow ? getRoomId(user._id, currentContactNow._id) : null;
-
-            if (roomId === currentRoomId) {
-                setMessages(prev => {
-                    // Deduplicate by _id safely
-                    if (prev.some(m => m._id?.toString() === data._id?.toString())) return prev;
-                    return [...prev, data];
-                });
-            }
-
-            // Update sidebar
-            setContacts(prev => {
-                const otherId = data.senderId.toString() === user._id.toString() ? data.receiverId : data.senderId;
-                const existingIdx = prev.findIndex(c => c._id.toString() === otherId.toString());
-
-                if (existingIdx !== -1) {
-                    const updated = [...prev];
-                    updated[existingIdx] = {
-                        ...updated[existingIdx],
-                        lastMessage: data,
-                        updatedAt: data.timestamp
-                    };
-                    const item = updated.splice(existingIdx, 1)[0];
-                    return [item, ...updated];
-                }
-                return prev;
-            });
-
-            if (data.senderId.toString() !== user._id.toString()) {
-                handleIncomingMessageForAI(data.content, messagesRef.current);
-            }
-        });
-
-        socket.on('request_accepted', (data) => {
-            const currentContactNow = contactRef.current;
-            if (currentContactNow && (currentContactNow._id.toString() === data.acceptedBy.toString())) {
-                setConversation(prev => prev ? ({ ...prev, status: 'accepted' }) : prev);
-            }
-            setContacts(prev => prev.map(c => c._id.toString() === data.acceptedBy.toString() ? ({ ...c, status: 'accepted' }) : c));
-        });
-
-        return () => {
-            socket.disconnect();
-        };
-    }, [user?._id]);
-
-    // Re-fetch messages & status when contact changes
-    useEffect(() => {
-        if (currentContact) {
-            setAiSuggestions([]); // Clear old suggestions
-            const roomId = getRoomId(user._id, currentContact._id);
-            socket?.emit('join_room', roomId);
-
+// ...
             // Fetch messages & Handle AI trigger
-            fetch(`http://localhost:3001/api/messages/${roomId}`)
+            fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/messages/${roomId}`)
                 .then(res => res.json())
                 .then(data => {
-                    if (Array.isArray(data)) {
-                        setMessages(data);
-                        if (data.length > 0) {
-                            const lastMsg = data[data.length - 1];
-                            if (lastMsg.senderId.toString() !== user._id.toString()) {
-                                handleIncomingMessageForAI(lastMsg.content, data.slice(0, -1));
-                            }
-                        }
-                    } else {
-                        setMessages([]);
-                    }
-                })
-                .catch(err => {
-                    console.error("Fetch messages error:", err);
-                    setMessages([]);
-                });
-
+// ...
             // Fetch Conversation Status
-            fetch(`http://localhost:3001/api/conversation/status/${user._id}/${currentContact._id}`)
+            fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/conversation/status/${user._id}/${currentContact._id}`)
                 .then(res => res.json())
-                .then(data => setConversation(data))
-                .catch(err => console.error("Fetch status error:", err));
-        }
-    }, [currentContact, user?._id]);
-
-
-    const getRoomId = (id1, id2) => {
-        return [id1, id2].sort().join('_');
-    }
-
-    const handleSendMessage = (content, isAi = false) => {
-        if (!currentContact) return;
-
-        const roomId = getRoomId(user._id, currentContact._id);
-        const messageData = {
-            room: roomId,
-            senderId: user._id,
-            receiverId: currentContact._id,
-            content: content,
-            timestamp: new Date(),
-            isAiGenerated: isAi
-        };
-
-        socket.emit('send_message', messageData);
-        setMessages((prev) => [...prev, messageData]);
-
-        // Update contacts list for sender too
-        setContacts(prev => {
-            const existingIdx = prev.findIndex(c => c._id.toString() === currentContact._id.toString());
-            if (existingIdx !== -1) {
-                const updated = [...prev];
-                updated[existingIdx] = {
-                    ...updated[existingIdx],
-                    lastMessage: messageData,
-                    updatedAt: messageData.timestamp
-                };
-                const item = updated.splice(existingIdx, 1)[0];
-                return [item, ...updated];
-            }
-            return prev;
-        });
-    };
-
-    const handleIncomingMessageForAI = async (incomingText, currentMessages, forceAutoMode = null) => {
-        const modeAtTime = forceAutoMode !== null ? forceAutoMode : autoModeRef.current;
-        console.log("🤖 AI Triggered for content:", incomingText, "AutoMode:", modeAtTime);
-
-        setIsAiLoading(true);
-
-        // Build context from last 8 messages for better suggestions
-        const history = (currentMessages || []).slice(-8).map(m => ({
-            sender: m.senderId.toString() === user._id.toString() ? 'me' : 'them',
-            content: m.content
-        }));
-
-        // Only add if not already there (avoid duplicates)
-        if (history.length === 0 || history[history.length - 1].content !== incomingText) {
-            history.push({ sender: 'them', content: incomingText });
-        }
-
+// ...
         try {
             console.log("📡 Fetching suggestions with history length:", history.length);
-            const response = await fetch('http://localhost:3001/api/generate-suggestions', {
+            const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/generate-suggestions`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ chatHistory: history, autoMode: modeAtTime })
