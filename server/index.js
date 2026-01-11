@@ -18,6 +18,10 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRoutes);
 
+app.get('/', (req, res) => {
+    res.json({ status: "alive", version: "2.1.0", message: "ChatPilot Backend Online" });
+});
+
 app.get('/api/debug/ai', (req, res) => {
     res.json({
         hasKey: !!process.env.GEMINI_API_KEY,
