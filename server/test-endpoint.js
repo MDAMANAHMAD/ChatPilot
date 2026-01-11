@@ -1,7 +1,7 @@
 const http = require('http');
 
 const data = JSON.stringify({
-  chatHistory: [],
+  chatHistory: [{ content: "Hello", senderId: "user1", timestamp: new Date() }],
   autoMode: false
 });
 
@@ -12,15 +12,19 @@ const options = {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
-    'Content-Length': data.length
+    'Content-Length': Buffer.byteLength(data)
   }
 };
 
-console.log("Sending request...");
+console.log("Sending request to http://localhost:3001/api/generate-suggestions ...");
 const req = http.request(options, (res) => {
   console.log(`STATUS: ${res.statusCode}`);
+  let body = '';
   res.on('data', (chunk) => {
-    console.log(`BODY: ${chunk}`);
+    body += chunk;
+  });
+  res.on('end', () => {
+    console.log(`BODY: ${body}`);
   });
 });
 

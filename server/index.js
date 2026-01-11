@@ -19,12 +19,32 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 
 app.get('/', (req, res) => {
-    res.json({ 
-        status: "alive", 
-        version: "2.2.0", 
+    res.json({
+        status: "alive",
+        version: "2.2.0",
         buildTime: "Jan 11 20:53",
-        message: "ChatPilot Backend Online" 
+        message: "ChatPilot Backend Online"
     });
+});
+
+app.get('/api/debug/test-ai', async (req, res) => {
+    try {
+        const key = process.env.GEMINI_API_KEY;
+        if (!key) return res.json({ error: "No key found" });
+
+        const testGenAI = new GoogleGenerativeAI(key.trim());
+        const testModel = testGenAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const result = await testModel.generateContent("Test");
+        const response = await result.response;
+        res.json({ success: true, text: response.text() });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: err.message,
+            stack: err.stack,
+            name: err.name
+        });
+    }
 });
 
 app.get('/api/debug/ai', (req, res) => {
@@ -46,8 +66,11 @@ const io = new Server(server, {
 });
 
 // Gemini Config 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-console.log("🔑 Checking AI Key:", GEMINI_API_KEY ? "Found" : "Missing");
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : null;
+const SECONDARY_GEMINI_KEY = process.env.SECONDARY_GEMINI_KEY ? process.env.SECONDARY_GEMINI_KEY.trim() : null;
+
+console.log("🔑 Primary AI Key Status:", GEMINI_API_KEY ? "Found" : "Missing");
+console.log("🔑 Secondary AI Key Status:", SECONDARY_GEMINI_KEY ? "Found" : "Missing");
 
 let genAI;
 if (GEMINI_API_KEY) {
@@ -58,7 +81,7 @@ if (GEMINI_API_KEY) {
 const getModel = (key = GEMINI_API_KEY) => {
     if (!key) return null;
     const client = new GoogleGenerativeAI(key);
-    return client.getGenerativeModel({ model: "gemini-1.5-flash" });
+    return client.getGenerativeModel({ model: "gemini-flash-latest" });
 }
 
 const model = getModel();
@@ -125,13 +148,14 @@ io.on('connection', (socket) => {
                     let success = false;
 
                     try {
-                        const keys = [process.env.GEMINI_API_KEY, process.env.SECONDARY_GEMINI_KEY].filter(Boolean);
+                        const keys = [GEMINI_API_KEY, SECONDARY_GEMINI_KEY].filter(Boolean);
 
                         for (const key of keys) {
                             if (success) break;
                             try {
-                                const tempGenAI = new GoogleGenerativeAI(key);
-                                const botModel = tempGenAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                                const currentKey = key.trim();
+                                const tempGenAI = new GoogleGenerativeAI(currentKey);
+                                const botModel = tempGenAI.getGenerativeModel({ model: "gemini-flash-latest" });
                                 const result = await botModel.generateContent(`
                                     You are "Pilot Bot", a helpful AI assistant in the ChatPilot app.
                                     User just said: "${data.content}"
@@ -141,9 +165,9 @@ io.on('connection', (socket) => {
                                 const response = await result.response;
                                 botReplyText = response.text().trim();
                                 success = true;
-                                console.log("🤖 Chat Bot Success with key:", key.substring(0, 8));
+                                console.log(`🤖 Chat Bot Success with key ending in: ...${currentKey.substring(currentKey.length - 4)}`);
                             } catch (err) {
-                                console.warn(`🤖 Bot AI Attempt failed: ${err.message}`);
+                                console.warn(`🤖 Bot AI Attempt failed with key starting ${key.substring(0, 5)}: ${err.message}`);
                             }
                         }
                     } catch (botErr) {
@@ -251,8 +275,8 @@ app.post('/api/generate-suggestions', async (req, res) => {
         const { chatHistory, autoMode: mode } = req.body;
         autoMode = mode;
 
-        console.log("📨 AI Request:", { 
-            historyLength: chatHistory?.length, 
+        console.log("📨 AI Request:", {
+            historyLength: chatHistory?.length,
             autoMode,
             hasPrimary: !!process.env.GEMINI_API_KEY,
             hasSecondary: !!process.env.SECONDARY_GEMINI_KEY
@@ -285,17 +309,21 @@ app.post('/api/generate-suggestions', async (req, res) => {
         Chat History: ${JSON.stringify(chatHistory)}`;
         }
 
-        console.log("🤖 Requesting Gemini 1.5 Flash for prompt...");
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // Use stable model version
-
-        const keys = [process.env.GEMINI_API_KEY, process.env.SECONDARY_GEMINI_KEY].filter(Boolean);
+        const keys = [GEMINI_API_KEY, SECONDARY_GEMINI_KEY].filter(Boolean);
         let text = "";
         let success = false;
+        let lastError = null;
+
+        if (keys.length === 0) {
+            console.error("❌ No AI keys found in environment variables!");
+            throw new Error("No API keys configured");
+        }
 
         for (const key of keys) {
             if (success) break;
-            const tempGenAI = new GoogleGenerativeAI(key);
-            const tempModel = tempGenAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const currentKey = key.trim();
+            const tempGenAI = new GoogleGenerativeAI(currentKey);
+            const tempModel = tempGenAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
             for (let attempt = 1; attempt <= 2; attempt++) {
                 try {
@@ -303,11 +331,12 @@ app.post('/api/generate-suggestions', async (req, res) => {
                     const response = await result.response;
                     text = response.text().trim();
                     success = true;
+                    console.log(`✅ AI Success with key ending in: ...${currentKey.substring(currentKey.length - 4)}`);
                     break;
                 } catch (err) {
-                    console.warn(`⚠️ Key ${key.substring(0, 10)}... Attempt ${attempt} failed: ${err.message}`);
+                    lastError = err;
+                    console.warn(`⚠️ Key starting ${currentKey.substring(0, 5)}... Attempt ${attempt} failed: ${err.message}`);
                     if (err.message.includes('429') || err.message.includes('API_KEY_INVALID')) {
-                        // Rate limit or invalid key -> Move to next key immediately
                         break;
                     }
                     if (attempt === 2) break;
@@ -400,7 +429,13 @@ app.post('/api/generate-draft', async (req, res) => {
 
         if (!userPrompt) return res.status(400).json({ error: "Prompt required" });
 
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        if (!GEMINI_API_KEY && !SECONDARY_GEMINI_KEY) {
+            return res.status(500).json({ error: "AI keys missing" });
+        }
+
+        const activeKey = (GEMINI_API_KEY || SECONDARY_GEMINI_KEY).trim();
+        const draftGenAI = new GoogleGenerativeAI(activeKey);
+        const draftModel = draftGenAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
         const systemPrompt = `You are an AI writing assistant for a chat app. 
         TASK: Rewrite the user's raw instruction into a natural, casual WhatsApp-style message.
@@ -414,7 +449,7 @@ app.post('/api/generate-draft', async (req, res) => {
         // Retry Logic
         for (let attempt = 1; attempt <= 2; attempt++) {
             try {
-                const result = await model.generateContent(systemPrompt);
+                const result = await draftModel.generateContent(systemPrompt);
                 const response = await result.response;
                 text = response.text().trim().replace(/^"|"$/g, '');
                 break;
