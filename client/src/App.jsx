@@ -26,6 +26,7 @@ const MainApp = () => {
     const [autoMode, setAutoMode] = useState(false);
     const [isAiLoading, setIsAiLoading] = useState(false);
     const [isAiPanelOpen, setIsAiPanelOpen] = useState(true);
+    const [isBotTyping, setIsBotTyping] = useState(false);
 
     const messagesRef = useRef(messages);
     const contactRef = useRef(currentContact);
@@ -101,6 +102,17 @@ const MainApp = () => {
                 setConversation(prev => prev ? ({ ...prev, status: 'accepted' }) : prev);
             }
             setContacts(prev => prev.map(c => c._id.toString() === data.acceptedBy.toString() ? ({ ...c, status: 'accepted' }) : c));
+        });
+
+        socket.on('bot_typing', (data) => {
+            const currentContactNow = contactRef.current;
+            if (currentContactNow && currentContactNow._id.toString() === data.senderId.toString()) {
+                setIsBotTyping(true);
+            }
+        });
+
+        socket.on('bot_stop_typing', (data) => {
+            setIsBotTyping(false);
         });
 
         return () => {
@@ -250,6 +262,7 @@ const MainApp = () => {
                         conversation={conversation}
                         setConversation={setConversation}
                         socket={socket}
+                        isBotTyping={isBotTyping}
                     />
                     <AIPanel
                         isOpen={isAiPanelOpen}

@@ -80,17 +80,21 @@ io.on('connection', (socket) => {
             socket.to(data.receiverId).emit('receive_message', messageToEmit);
 
             // --- BOT LOGIC ---
-            // If the receiver is the Pilot Bot, reply automatically
             const receiverUser = await User.findById(data.receiverId);
             if (receiverUser && receiverUser.email === 'bot@chatpilot.ai') {
-                console.log("🤖 Message received by Pilot Bot. Generating reply...");
-                
-                // Simulate thinking delay
+                console.log("🤖 Pilot Bot is thinking...");
+
+                // 1. Notify client that bot is typing immediately
+                io.to(data.room).emit('bot_typing', { room: data.room, senderId: data.receiverId });
+                io.to(data.senderId).emit('bot_typing', { room: data.room, senderId: data.receiverId });
+
+                // Simulate slight thinking delay
                 setTimeout(async () => {
+                    let botReplyText = "I'm currently processing your frequency. Standby for link calibration. (AI temporarily unavailable)";
+                    let success = false;
+
                     try {
                         const keys = [process.env.GEMINI_API_KEY, process.env.SECONDARY_GEMINI_KEY].filter(Boolean);
-                        let botReplyText = "";
-                        let success = false;
 
                         for (const key of keys) {
                             if (success) break;
@@ -106,44 +110,45 @@ io.on('connection', (socket) => {
                                 const response = await result.response;
                                 botReplyText = response.text().trim();
                                 success = true;
+                                console.log("🤖 Chat Bot Success with key:", key.substring(0, 8));
                             } catch (err) {
-                                console.warn(`🤖 Bot Key fallback trigger: ${err.message}`);
+                                console.warn(`🤖 Bot AI Attempt failed: ${err.message}`);
                             }
                         }
-
-                        if (!success) throw new Error("Bot AI failed");
-
-                        const botMsgData = {
-                            room: data.room,
-                            senderId: data.receiverId, // Bot sends
-                            receiverId: data.senderId, // User receives
-                            content: botReplyText,
-                            timestamp: new Date(),
-                            isAiGenerated: true
-                        };
-
-
-                        // Save Bot Message
-                        const botMessage = new Message(botMsgData);
-                        await botMessage.save();
-
-                        // Update Conversation
-                        conv.lastMessage = botMsgData;
-                        conv.updatedAt = new Date();
-                        await conv.save();
-
-                        // Emit Bot Reply
-                        const botEmit = { ...botMessage._doc, room: data.room };
-                        io.to(data.room).emit('receive_message', botEmit);
-                        io.to(data.senderId).emit('receive_message', botEmit); // Notify user
-
                     } catch (botErr) {
-                        console.error("Bot Reply Error:", botErr);
+                        console.error("Bot Reply Logic Fatal Error:", botErr);
                     }
-                }, 1500);
+
+                    // 2. Stop typing
+                    io.to(data.room).emit('bot_stop_typing', { room: data.room, senderId: data.receiverId });
+                    io.to(data.senderId).emit('bot_stop_typing', { room: data.room, senderId: data.receiverId });
+
+                    const botMsgData = {
+                        room: data.room,
+                        senderId: data.receiverId,
+                        receiverId: data.senderId,
+                        content: botReplyText,
+                        timestamp: new Date(),
+                        isAiGenerated: true
+                    };
+
+                    // Save Bot Message
+                    const botMessage = new Message(botMsgData);
+                    await botMessage.save();
+
+                    // Update Conversation
+                    conv.lastMessage = botMsgData;
+                    conv.updatedAt = new Date();
+                    await conv.save();
+
+                    // Emit Bot Reply
+                    const botEmit = { ...botMessage._doc, room: data.room };
+                    io.to(data.room).emit('receive_message', botEmit);
+                    io.to(data.senderId).emit('receive_message', botEmit);
+
+                }, 2000);
             }
             // ----------------
-
         } catch (err) {
             console.error('Error saving message:', err);
         }
@@ -180,7 +185,7 @@ app.post('/api/auth/demo', async (req, res) => {
             username: `Guest Pilot ${randomId}`,
             email: `guest${randomId}@demo.com`,
             phoneNumber: `99${randomId.toString().padStart(8, '0')}`,
-            password: 'demo_password' 
+            password: 'demo_password'
         });
         await guestUser.save();
 
@@ -195,7 +200,7 @@ app.post('/api/auth/demo', async (req, res) => {
                 timestamp: new Date()
             }
         });
-        
+
         // Return Guest User Data (Simulate Login)
         // Note: Ideally we return a JWT, but for now filtering password is enough if using same structure
         const { password, ...userData } = guestUser._doc;
@@ -214,14 +219,14 @@ app.post('/api/generate-suggestions', async (req, res) => {
     try {
         const { chatHistory, autoMode: mode } = req.body;
         autoMode = mode;
-        
+
         if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === "YOUR_API_KEY_HERE") {
             console.error("CRITICAL: GEMINI_API_KEY is missing or invalid in .env");
             return res.status(500).json({ error: "AI configuration missing." });
         }
 
         let prompt = "";
-// ... (prompts remain the same) ...
+        // ... (prompts remain the same) ...
         if (autoMode) {
             prompt = `You are a smart personal assistant helping a user reply to a chat.
         CONTEXT: The provided JSON contains the recent chat history. The LAST message in the list is the one you MUST reply to.
@@ -269,22 +274,22 @@ app.post('/api/generate-suggestions', async (req, res) => {
                     console.warn(`⚠️ Key ${key.substring(0, 10)}... Attempt ${attempt} failed: ${err.message}`);
                     if (err.message.includes('429') || err.message.includes('API_KEY_INVALID')) {
                         // Rate limit or invalid key -> Move to next key immediately
-                        break; 
+                        break;
                     }
-                    if (attempt === 2) break; 
+                    if (attempt === 2) break;
                     await new Promise(r => setTimeout(r, 2000));
                 }
             }
         }
-        
+
         if (!success) throw new Error("All AI keys exhausted or failed.");
 
-        
+
         console.log("📡 Raw AI Output:", text);
 
         // Improved JSON extraction logic
         let cleanText = text;
-        
+
         // Remove markdown code blocks if present
         if (text.includes('```')) {
             const matches = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
@@ -298,7 +303,7 @@ app.post('/api/generate-suggestions', async (req, res) => {
         if (!cleanText.startsWith('{') && !cleanText.startsWith('[')) {
             const firstBrace = cleanText.indexOf('{');
             const firstBracket = cleanText.indexOf('[');
-            
+
             if (autoMode && firstBrace !== -1) {
                 cleanText = cleanText.substring(firstBrace, cleanText.lastIndexOf('}') + 1);
             } else if (!autoMode && firstBracket !== -1) {
@@ -312,7 +317,7 @@ app.post('/api/generate-suggestions', async (req, res) => {
             res.json(parsed);
         } catch (parseError) {
             console.error("❌ AI returned unparseable text after cleaning:", cleanText);
-            
+
             // Critical Fallback: Try regex for specific fields
             if (autoMode) {
                 const replyMatch = cleanText.match(/"reply":\s*"([^"]*)"/);
@@ -333,21 +338,21 @@ app.post('/api/generate-suggestions', async (req, res) => {
         }
     } catch (error) {
         console.error("🛑 GEMINI API ERROR:", error.message);
-        
+
         let errorMsg = "AI Pilot Unavailable";
-        
+
         if (error.message.includes('503') || error.message.includes('overloaded')) {
             errorMsg = "AI Server Overloaded - Try Again";
         } else if (error.message.includes('429')) {
-             errorMsg = "AI Traffic High - Standby";
+            errorMsg = "AI Traffic High - Standby";
         }
 
         // Fallback Mechanism
         // Return a structured error response that the frontend can display gracefully
         const fallbackSuggestions = [
-             "(System: " + errorMsg + ")"
+            "(System: " + errorMsg + ")"
         ];
-        
+
         if (autoMode) {
             res.json({ reply: `[SYSTEM ALERT: ${errorMsg}]`, confidence_score: 0 });
         } else {
@@ -360,11 +365,11 @@ app.post('/api/generate-suggestions', async (req, res) => {
 app.post('/api/generate-draft', async (req, res) => {
     try {
         const { prompt: userPrompt, chatHistory } = req.body;
-        
+
         if (!userPrompt) return res.status(400).json({ error: "Prompt required" });
 
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        
+
         const systemPrompt = `You are an AI writing assistant for a chat app. 
         TASK: Rewrite the user's raw instruction into a natural, casual WhatsApp-style message.
         STYLE: Short, human, minimal punctuation, maybe 1 emoji. No quotes.
@@ -387,7 +392,7 @@ app.post('/api/generate-draft', async (req, res) => {
                 await new Promise(r => setTimeout(r, 2000));
             }
         }
-        
+
         res.json({ draft: text });
     } catch (error) {
         console.error("AI Draft Error:", error);

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, Bot, Paperclip, Smile, Mic, Search, MoreVertical, CheckCheck, Menu, Plus, ShieldCheck, Zap, LogOut, Sparkles, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-const ChatArea = ({ messages, currentContact, onSendMessage, messageInput, setMessageInput, conversation, setConversation, socket }) => {
+const ChatArea = ({ messages, currentContact, onSendMessage, messageInput, setMessageInput, conversation, setConversation, socket, isBotTyping }) => {
     const messagesEndRef = useRef(null);
     const { user } = useAuth();
     const [showComposer, setShowComposer] = useState(false);
@@ -215,6 +215,20 @@ const ChatArea = ({ messages, currentContact, onSendMessage, messageInput, setMe
                         </div>
                     );
                 })}
+
+                {/* Typing Indicator */}
+                {isBotTyping && (
+                    <div className="flex items-start mt-4 animate-in fade-in duration-300">
+                        <div className="bg-slate-700 text-white px-4 py-3 rounded-2xl rounded-bl-none border border-white/10 shadow-lg">
+                            <div className="flex gap-1.5 items-center h-5">
+                                <div className="w-1.5 h-1.5 bg-pilot-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                <div className="w-1.5 h-1.5 bg-pilot-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                <div className="w-1.5 h-1.5 bg-pilot-primary rounded-full animate-bounce"></div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
                 <div ref={messagesEndRef} />
             </div>
 
