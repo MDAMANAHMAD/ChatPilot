@@ -37,10 +37,23 @@ const io = new Server(server, {
 });
 
 // Gemini Config 
-console.log("🔑 Checking AI Key:", process.env.GEMINI_API_KEY ? "Found" : "Missing");
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-// Used gemini-flash-latest as verified by model listing
-const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+console.log("🔑 Checking AI Key:", GEMINI_API_KEY ? "Found" : "Missing");
+
+let genAI;
+if (GEMINI_API_KEY) {
+    genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+}
+
+// Global model instance (using 1.5-flash for everything)
+const getModel = (key = GEMINI_API_KEY) => {
+    if (!key) return null;
+    const client = new GoogleGenerativeAI(key);
+    return client.getGenerativeModel({ model: "gemini-1.5-flash" });
+}
+
+const model = getModel();
+
 
 // Socket.io Logic
 // Socket.io Logic
@@ -229,10 +242,13 @@ app.post('/api/generate-suggestions', async (req, res) => {
         const { chatHistory, autoMode: mode } = req.body;
         autoMode = mode;
 
-        if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === "YOUR_API_KEY_HERE") {
-            console.error("CRITICAL: GEMINI_API_KEY is missing or invalid in .env");
-            return res.status(500).json({ error: "AI configuration missing." });
-        }
+        console.log("📨 AI Request:", { 
+            historyLength: chatHistory?.length, 
+            autoMode,
+            hasPrimary: !!process.env.GEMINI_API_KEY,
+            hasSecondary: !!process.env.SECONDARY_GEMINI_KEY
+        });
+
 
         let prompt = "";
         // ... (prompts remain the same) ...
