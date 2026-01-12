@@ -81,7 +81,7 @@ if (GEMINI_API_KEY) {
 const getModel = (key = GEMINI_API_KEY) => {
     if (!key) return null;
     const client = new GoogleGenerativeAI(key);
-    return client.getGenerativeModel({ model: "gemini-flash-latest" });
+    return client.getGenerativeModel({ model: "gemini-1.5-flash" });
 }
 
 const model = getModel();
@@ -155,7 +155,7 @@ io.on('connection', (socket) => {
                             try {
                                 const currentKey = key.trim();
                                 const tempGenAI = new GoogleGenerativeAI(currentKey);
-                                const botModel = tempGenAI.getGenerativeModel({ model: "gemini-flash-latest" });
+                                const botModel = tempGenAI.getGenerativeModel({ model: "gemini-1.5-flash" });
                                 const result = await botModel.generateContent(`
                                     You are "Pilot Bot", a helpful AI assistant in the ChatPilot app.
                                     User just said: "${data.content}"
@@ -323,7 +323,7 @@ app.post('/api/generate-suggestions', async (req, res) => {
             if (success) break;
             const currentKey = key.trim();
             const tempGenAI = new GoogleGenerativeAI(currentKey);
-            const tempModel = tempGenAI.getGenerativeModel({ model: "gemini-flash-latest" });
+            const tempModel = tempGenAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
             for (let attempt = 1; attempt <= 2; attempt++) {
                 try {
@@ -335,7 +335,7 @@ app.post('/api/generate-suggestions', async (req, res) => {
                     break;
                 } catch (err) {
                     lastError = err;
-                    console.warn(`⚠️ Key starting ${currentKey.substring(0, 5)}... Attempt ${attempt} failed: ${err.message}`);
+                    console.warn(`⚠️ Key ending ...${currentKey.substring(currentKey.length - 4)} Attempt ${attempt} failed: ${err.message}`);
                     if (err.message.includes('429') || err.message.includes('API_KEY_INVALID')) {
                         break;
                     }
@@ -345,7 +345,10 @@ app.post('/api/generate-suggestions', async (req, res) => {
             }
         }
 
-        if (!success) throw new Error("All AI keys exhausted or failed.");
+        if (!success) {
+             console.error("ALL KEYS FAILED. Last error:", lastError?.message);
+             throw new Error("All AI keys exhausted or failed.");
+        }
 
 
         console.log("📡 Raw AI Output:", text);
@@ -435,7 +438,7 @@ app.post('/api/generate-draft', async (req, res) => {
 
         const activeKey = (GEMINI_API_KEY || SECONDARY_GEMINI_KEY).trim();
         const draftGenAI = new GoogleGenerativeAI(activeKey);
-        const draftModel = draftGenAI.getGenerativeModel({ model: "gemini-flash-latest" });
+        const draftModel = draftGenAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
         const systemPrompt = `You are an AI writing assistant for a chat app. 
         TASK: Rewrite the user's raw instruction into a natural, casual WhatsApp-style message.

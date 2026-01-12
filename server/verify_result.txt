@@ -1,0 +1,9 @@
+﻿[dotenv@17.2.3] injecting env (4) from .env -- tip: ≡ƒæÑ sync secrets across teammates & machines: https://dotenvx.com/ops
+--- Starting AI Key Verification ---
+Found 2 keys.
+
+[1] Testing Key: AIza...gays
+
+[2] Testing Key: AIza...vfjg
+
+--- Done ---
