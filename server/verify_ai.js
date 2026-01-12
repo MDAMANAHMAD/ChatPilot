@@ -23,7 +23,7 @@ async function testKeys() {
             try {
                 const genAI = new GoogleGenerativeAI(key);
                 // Use the NEW model name we fixed in index.js
-                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
                 
                 const result = await model.generateContent("Ping");
                 const response = await result.response;

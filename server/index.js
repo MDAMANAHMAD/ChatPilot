@@ -81,7 +81,7 @@ if (GEMINI_API_KEY) {
 const getModel = (key = GEMINI_API_KEY) => {
     if (!key) return null;
     const client = new GoogleGenerativeAI(key);
-    return client.getGenerativeModel({ model: "gemini-1.5-flash" });
+    return client.getGenerativeModel({ model: "gemini-2.0-flash" });
 }
 
 const model = getModel();
@@ -155,7 +155,7 @@ io.on('connection', (socket) => {
                             try {
                                 const currentKey = key.trim();
                                 const tempGenAI = new GoogleGenerativeAI(currentKey);
-                                const botModel = tempGenAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                                const botModel = tempGenAI.getGenerativeModel({ model: "gemini-2.0-flash" });
                                 const result = await botModel.generateContent(`
                                     You are "Pilot Bot", a helpful AI assistant in the ChatPilot app.
                                     User just said: "${data.content}"
@@ -323,7 +323,7 @@ app.post('/api/generate-suggestions', async (req, res) => {
             if (success) break;
             const currentKey = key.trim();
             const tempGenAI = new GoogleGenerativeAI(currentKey);
-            const tempModel = tempGenAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const tempModel = tempGenAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
             for (let attempt = 1; attempt <= 2; attempt++) {
                 try {
@@ -436,31 +436,46 @@ app.post('/api/generate-draft', async (req, res) => {
             return res.status(500).json({ error: "AI keys missing" });
         }
 
-        const activeKey = (GEMINI_API_KEY || SECONDARY_GEMINI_KEY).trim();
-        const draftGenAI = new GoogleGenerativeAI(activeKey);
-        const draftModel = draftGenAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-        const systemPrompt = `You are an AI writing assistant for a chat app. 
-        TASK: Rewrite the user's raw instruction into a natural, casual WhatsApp-style message.
-        STYLE: Short, human, minimal punctuation, maybe 1 emoji. No quotes.
-        
-        User Instruction: "${userPrompt}"
-        
-        Output only the message text.`;
-
+        const keys = [GEMINI_API_KEY, SECONDARY_GEMINI_KEY].filter(Boolean);
         let text = "";
-        // Retry Logic
-        for (let attempt = 1; attempt <= 2; attempt++) {
-            try {
-                const result = await draftModel.generateContent(systemPrompt);
-                const response = await result.response;
-                text = response.text().trim().replace(/^"|"$/g, '');
-                break;
-            } catch (err) {
-                console.warn(`⚠️ Draft Attempt ${attempt} failed: ${err.message}`);
-                if (attempt === 2) throw err;
-                await new Promise(r => setTimeout(r, 2000));
+        let success = false;
+        let lastError = null;
+
+        for (const key of keys) {
+            if (success) break;
+            const activeKey = key.trim();
+            const draftGenAI = new GoogleGenerativeAI(activeKey);
+const draftModel = draftGenAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+            const systemPrompt = `You are an AI writing assistant for a chat app. 
+            TASK: Rewrite the user's raw instruction into a natural, casual WhatsApp-style message.
+            STYLE: Short, human, minimal punctuation, maybe 1 emoji. No quotes.
+            
+            User Instruction: "${userPrompt}"
+            
+            Output only the message text.`;
+
+            // Retry Logic per key
+            for (let attempt = 1; attempt <= 2; attempt++) {
+                try {
+                    const result = await draftModel.generateContent(systemPrompt);
+                    const response = await result.response;
+                    text = response.text().trim().replace(/^"|"$/g, '');
+                    success = true;
+                    console.log(`✅ Draft Success with key ending in: ...${activeKey.substring(activeKey.length - 4)}`);
+                    break;
+                } catch (err) {
+                    lastError = err;
+                    console.warn(`⚠️ Draft Key ...${activeKey.substring(activeKey.length - 4)} Attempt ${attempt} failed: ${err.message}`);
+                    if (attempt === 2) break; // Try next key
+                    await new Promise(r => setTimeout(r, 1000));
+                }
             }
+        }
+
+        if (!success) {
+            console.error("All Draft Keys Failed:", lastError);
+            throw lastError || new Error("All keys failed");
         }
 
         res.json({ draft: text });
