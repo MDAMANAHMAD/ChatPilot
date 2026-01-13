@@ -10,6 +10,7 @@ require('dotenv').config();
 const Message = require('./models/Message');
 const User = require('./models/User');
 const Conversation = require('./models/Conversation');
+const { encrypt, decrypt } = require('./utils/encryption');
 
 const app = express();
 app.use(cors());
@@ -119,15 +120,15 @@ io.on('connection', (socket) => {
                     participants: [data.senderId, data.receiverId],
                     status: 'pending',
                     initiatedBy: data.senderId,
-                    lastMessage: data
+                    lastMessage: { ...data, content: encrypt(data.content) }
                 });
             } else {
-                conv.lastMessage = data;
+                conv.lastMessage = { ...data, content: encrypt(data.content) };
                 conv.updatedAt = new Date();
                 await conv.save();
             }
 
-            const messageToEmit = { ...newMessage._doc, room: data.room };
+            const messageToEmit = { ...newMessage.toObject(), room: data.room };
 
             // Broadcast
             socket.to(data.room).emit('receive_message', messageToEmit);
@@ -192,12 +193,12 @@ io.on('connection', (socket) => {
                     await botMessage.save();
 
                     // Update Conversation
-                    conv.lastMessage = botMsgData;
+                    conv.lastMessage = { ...botMsgData, content: encrypt(botMsgData.content) };
                     conv.updatedAt = new Date();
                     await conv.save();
 
                     // Emit Bot Reply
-                    const botEmit = { ...botMessage._doc, room: data.room };
+                    const botEmit = { ...botMessage.toObject(), room: data.room };
                     io.to(data.room).emit('receive_message', botEmit);
                     io.to(data.senderId).emit('receive_message', botEmit);
 
@@ -548,11 +549,18 @@ app.get('/api/conversations/:userId', async (req, res) => {
         // We also want to include the last message and status if possible
         const contacts = conversations.map(conv => {
             const otherUser = conv.participants.find(p => p._id.toString() !== userId);
+            
+            // Decrypt last message content for UI
+            const lastMsg = conv.lastMessage ? { 
+                ...conv.lastMessage, 
+                content: decrypt(conv.lastMessage.content) 
+            } : null;
+
             return {
                 ...otherUser._doc, // User details
                 conversationId: conv._id,
                 status: conv.status,
-                lastMessage: conv.lastMessage,
+                lastMessage: lastMsg,
                 updatedAt: conv.updatedAt
             };
         });

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { encrypt, decrypt } = require('../utils/encryption');
 
 const messageSchema = new mongoose.Schema({
   senderId: {
@@ -11,7 +12,9 @@ const messageSchema = new mongoose.Schema({
   },
   content: {
     type: String,
-    required: true
+    required: true,
+    set: encrypt,
+    get: decrypt
   },
   timestamp: {
     type: Date,
@@ -26,6 +29,9 @@ const messageSchema = new mongoose.Schema({
     enum: ['sent', 'delivered', 'read'],
     default: 'sent'
   }
+}, {
+  toJSON: { getters: true },
+  toObject: { getters: true }
 });
 
 const Message = mongoose.model('Message', messageSchema);
