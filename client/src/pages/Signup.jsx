@@ -1,18 +1,31 @@
+/**
+ * SIGNUP PAGE
+ * 
+ * New user registration system. 
+ * Assigns a unique "Callsign" (Username) and "Frequency" (Phone number) to each pilot.
+ */
+
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { Bot, UserPlus, Mail, Lock, User, Phone, ShieldCheck, Zap } from "lucide-react";
 
 const Signup = () => {
+  // REGISTRATION STATE
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
   const { register } = useAuth();
   const navigate = useNavigate();
 
+  /**
+   * REGISTRATION HANDLER
+   * Validates input and creates the user profile in MongoDB.
+   */
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -20,6 +33,7 @@ const Signup = () => {
     try {
       const result = await register(username, email, phoneNumber, password);
       if (result.success) {
+        // Successful registration auto-logs the user in
         navigate("/chat");
       } else {
         setError(result.message || "Failed to create account. Frequency might be taken.");
@@ -33,14 +47,15 @@ const Signup = () => {
 
   return (
     <div className="min-h-screen bg-pilot-bg flex flex-col items-center justify-center relative overflow-hidden font-['Outfit']">
-      {/* Background Decor */}
+      
+      {/* Background Decor - Dynamic Orbs and Grids */}
       <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] bg-pilot-accent/10 rounded-full blur-[120px] pointer-events-none animate-pulse"></div>
       <div className="absolute bottom-[-20%] left-[-10%] w-[60%] h-[60%] bg-pilot-primary/10 rounded-full blur-[120px] pointer-events-none animate-pulse" style={{ animationDelay: '1.5s' }}></div>
       <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#6366f1 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
 
       <div className="w-full max-w-[1100px] flex flex-col md:flex-row-reverse items-stretch justify-center z-10 p-4 gap-0 shadow-2xl rounded-3xl overflow-hidden border border-white/5">
         
-        {/* Right Side: Visuals */}
+        {/* Visual Showcase Sidebar */}
         <div className="hidden md:flex flex-1 bg-pilot-surface/40 backdrop-blur-md p-12 flex-col justify-between relative overflow-hidden">
             <div className="absolute bottom-0 left-0 p-32 bg-pilot-accent/10 rounded-full blur-3xl -ml-16 -mb-16"></div>
             
@@ -78,7 +93,7 @@ const Signup = () => {
             </div>
         </div>
 
-        {/* Left Side: Signup Form */}
+        {/* Signup Form Container */}
         <div className="flex-1 bg-pilot-surface p-8 lg:p-14 flex flex-col justify-center">
           <div className="mb-8">
             <h2 className="text-3xl font-bold text-white mb-2">Request Access</h2>
